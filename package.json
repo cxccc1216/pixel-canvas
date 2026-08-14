@@ -1,0 +1,21 @@
+{
+  "name": "pixel-canvas",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "开源免费像素画工具：自由绘制 + 图片转像素，面向零基础像素游戏创作者",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "gifenc": "^1.0.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.0.7"
+  }
+}

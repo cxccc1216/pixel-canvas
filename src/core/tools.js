@@ -1,0 +1,265 @@
+// 绘制工具逻辑：铅笔 / 橡皮 / 油漆桶 / 取色器 / 去色块
+
+export const TOOLS = {
+  pencil: { id: 'pencil', name: '铅笔', key: 'B' },
+  eraser: { id: 'eraser', name: '橡皮', key: 'E' },
+  fill: { id: 'fill', name: '油漆桶', key: 'G' },
+  picker: { id: 'picker', name: '取色器', key: 'I' },
+  removeColor: { id: 'removeColor', name: '去色块', key: 'R' },
+}
+
+export const TOOL_ORDER = ['pencil', 'eraser', 'fill', 'picker', 'removeColor']
+
+// 对称模式
+export const SYMMETRY = {
+  none: { id: 'none', name: '关闭' },
+  vertical: { id: 'vertical', name: '左右对称' },
+  horizontal: { id: 'horizontal', name: '上下对称' },
+  both: { id: 'both', name: '十字对称' },
+}
+
+export const SYMMETRY_ORDER = ['none', 'vertical', 'horizontal', 'both']
+
+/**
+ * 计算 (x,y) 在对称模式下的全部镜像点（含自身）
+ * @param {number} x y
+ * @param {number} w h 画布宽高
+ * @param {string} axis none|vertical|horizontal|both
+ * @returns {Array<[number, number]>}
+ */
+export function symmetricPoints(x, y, w, h, axis) {
+  const pts = [[x, y]]
+  if (axis === 'vertical' || axis === 'both') pts.push([w - 1 - x, y])
+  if (axis === 'horizontal' || axis === 'both') pts.push([x, h - 1 - y])
+  if (axis === 'both') pts.push([w - 1 - x, h - 1 - y])
+  return pts
+}
+
+/**
+ * 方形笔刷绘制：以 (cx,cy) 为中心画 size×size 像素块（含对称镜像）
+ * 偶数尺寸以锚点 (cx - (size-1)/2) 起画，保证覆盖 size 个像素
+ * @param {import('./canvasModel.js').PixelCanvas} model
+ * @param {number} cx cy 中心像素坐标
+ * @param {number} size 笔刷边长（像素格，>=1）
+ * @param {number} color 颜色（Uint32）
+ * @param {string} axis 对称模式
+ */
+export function paintBrush(model, cx, cy, size, color, axis) {
+  const w = model.width
+  const h = model.height
+  const x0 = cx - Math.floor((size - 1) / 2)
+  const y0 = cy - Math.floor((size - 1) / 2)
+  const x1 = cx + Math.floor(size / 2)
+  const y1 = cy + Math.floor(size / 2)
+  for (let py = y0; py <= y1; py++) {
+    if (py < 0 || py >= h) continue
+    for (let px = x0; px <= x1; px++) {
+      if (px < 0 || px >= w) continue
+      for (const [mx, my] of symmetricPoints(px, py, w, h, axis)) {
+        model.setPixel(mx, my, color)
+      }
+    }
+  }
+}
+
+/**
+ * 画两点之间的线（逐像素步进，供铅笔/橡皮拖拽使用）
+ * @param {(x:number, y:number) => void} draw 绘制回调
+ * @param {number} x0 y0 x1 y1 像素坐标
+ */
+export function drawLine(draw, x0, y0, x1, y1) {
+  const dx = Math.abs(x1 - x0)
+  const dy = Math.abs(y1 - y0)
+  const sx = x0 < x1 ? 1 : -1
+  const sy = y0 < y1 ? 1 : -1
+  let err = dx - dy
+  let x = x0
+  let y = y0
+  for (;;) {
+    draw(x, y)
+    if (x === x1 && y === y1) break
+    const e2 = 2 * err
+    if (e2 > -dy) {
+      err -= dy
+      x += sx
+    }
+    if (e2 < dx) {
+      err += dx
+      y += sy
+    }
+  }
+}
+
+/**
+ * 油漆桶：BFS 泛洪填充，返回填充像素数
+ */
+export function floodFill(model, x, y, fillColor) {
+  const target = model.getPixel(x, y)
+  if (target === fillColor) return 0
+  const { width, height, data } = model
+  const stack = [x, y]
+  let count = 0
+  while (stack.length) {
+    const cy = stack.pop()
+    const cx = stack.pop()
+    if (cx < 0 || cy < 0 || cx >= width || cy >= height) continue
+    const i = cy * width + cx
+    if (data[i] !== target) continue
+    data[i] = fillColor
+    count++
+    stack.push(cx + 1, cy, cx - 1, cy, cx, cy + 1, cx, cy - 1)
+  }
+  return count
+}
+
+// 油漆桶跨行优化版（扫描线泛洪填充），避免 BFS 在大面积填充时栈过大
+export function floodFillScanline(model, x, y, fillColor) {
+  const target = model.getPixel(x, y)
+  if (target === fillColor) return 0
+  const { width, height, data } = model
+  const queue = [[x, y]]
+  let count = 0
+  while (queue.length) {
+    const [sx, sy] = queue.pop()
+    let left = sx
+    while (left >= 0 && data[sy * width + left] === target) left--
+    left++
+    let right = sx
+    while (right < width && data[sy * width + right] === target) right++
+    right--
+    for (let cx = left; cx <= right; cx++) {
+      data[sy * width + cx] = fillColor
+      count++
+    }
+    // 检查上下行
+    for (let ny = sy - 1; ny <= sy + 1; ny += 2) {
+      if (ny < 0 || ny >= height) continue
+      let inSpan = false
+      for (let cx = left; cx <= right; cx++) {
+        if (data[ny * width + cx] === target) {
+          if (!inSpan) {
+            queue.push([cx, ny])
+            inSpan = true
+          }
+        } else {
+          inSpan = false
+        }
+      }
+    }
+  }
+  return count
+}
+
+/**
+ * 取色：返回像素颜色（Uint32）
+ */
+export function pickColor(model, x, y) {
+  return model.getPixel(x, y)
+}
+
+/**
+ * 去除色块：消除当前帧中所有与指定颜色相同的像素（变为透明）
+ * @param {import('./canvasModel.js').PixelCanvas} model
+ * @param {number} color 要消除的颜色（Uint32）
+ * @returns {number} 消除的像素数量
+ */
+export function removeColor(model, color) {
+  let count = 0
+  const data = model.data
+  for (let i = 0; i < data.length; i++) {
+    if (data[i] === color) {
+      data[i] = 0
+      count++
+    }
+  }
+  return count
+}
+
+/**
+ * 按连通区域去除色块：只清除与 (x,y) 四连通的同色区域（变为透明）
+ * 复用扫描线泛洪填充，填充目标为透明色。
+ * @param {import('./canvasModel.js').PixelCanvas} model
+ * @param {number} x y 目标像素坐标
+ * @returns {number} 清除的像素数量
+ */
+export function removeColorRegion(model, x, y) {
+  return floodFillScanline(model, x, y, 0)
+}
+
+/**
+ * 带容差的颜色匹配：色差 ≤ tolerance 视为同一颜色
+ */
+function colorMatch(c1, c2, tolerance) {
+  if (tolerance <= 0) return c1 === c2
+  if (c1 === c2) return true
+  const r1 = c1 & 0xff
+  const g1 = (c1 >>> 8) & 0xff
+  const b1 = (c1 >>> 16) & 0xff
+  const r2 = c2 & 0xff
+  const g2 = (c2 >>> 8) & 0xff
+  const b2 = (c2 >>> 16) & 0xff
+  const dr = r1 - r2
+  const dg = g1 - g2
+  const db = b1 - b2
+  return dr * dr + dg * dg + db * db <= tolerance * tolerance
+}
+
+/**
+ * 容差去除色块：消除当前帧中所有与指定颜色"相近"（色差 ≤ tolerance）的像素
+ * tolerance = 0 时与 removeColor 完全一致（精确匹配）
+ * @param {import('./canvasModel.js').PixelCanvas} model
+ * @param {number} color 目标颜色
+ * @param {number} tolerance 容差（0 = 精确）
+ * @returns {number} 清除的像素数量
+ */
+export function removeColorTolerance(model, color, tolerance) {
+  let count = 0
+  const data = model.data
+  for (let i = 0; i < data.length; i++) {
+    if (colorMatch(data[i], color, tolerance)) {
+      data[i] = 0
+      count++
+    }
+  }
+  return count
+}
+
+/**
+ * 容差连通区域去除：只清除与 (x,y) 色差 ≤ tolerance 的四连通区域（BFS）
+ * tolerance = 0 时与 removeColorRegion 等价
+ * @param {import('./canvasModel.js').PixelCanvas} model
+ * @param {number} x y 目标像素坐标
+ * @param {number} tolerance 容差（0 = 精确）
+ * @returns {number} 清除的像素数量
+ */
+export function removeColorRegionTolerance(model, x, y, tolerance) {
+  const w = model.width
+  const h = model.height
+  const target = model.getPixel(x, y)
+  if (target === 0) return 0
+  const data = model.data
+  const visited = new Uint8Array(data.length)
+  const stack = [[x, y]]
+  visited[y * w + x] = 1
+  let count = 0
+  while (stack.length) {
+    const [cx, cy] = stack.pop()
+    const i = cy * w + cx
+    if (!colorMatch(data[i], target, tolerance)) continue
+    data[i] = 0
+    count++
+    for (const [nx, ny] of [
+      [cx + 1, cy],
+      [cx - 1, cy],
+      [cx, cy + 1],
+      [cx, cy - 1],
+    ]) {
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
+      const ni = ny * w + nx
+      if (visited[ni]) continue
+      visited[ni] = 1
+      if (colorMatch(data[ni], target, tolerance)) stack.push([nx, ny])
+    }
+  }
+  return count
+}
