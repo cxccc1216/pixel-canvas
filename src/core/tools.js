@@ -6,9 +6,10 @@ export const TOOLS = {
   fill: { id: 'fill', name: '油漆桶', key: 'G' },
   picker: { id: 'picker', name: '取色器', key: 'I' },
   removeColor: { id: 'removeColor', name: '去色块', key: 'R' },
+  edgeClean: { id: 'edgeClean', name: '边缘去杂色', key: 'F' },
 }
 
-export const TOOL_ORDER = ['pencil', 'eraser', 'fill', 'picker', 'removeColor']
+export const TOOL_ORDER = ['pencil', 'eraser', 'fill', 'picker', 'removeColor', 'edgeClean']
 
 // 对称模式
 export const SYMMETRY = {
@@ -259,6 +260,75 @@ export function removeColorRegionTolerance(model, x, y, tolerance) {
       if (visited[ni]) continue
       visited[ni] = 1
       if (colorMatch(data[ni], target, tolerance)) stack.push([nx, ny])
+    }
+  }
+  return count
+}
+
+/**
+ * 边缘去杂色：从画布四周边界向内做容差泛洪，删除"与边缘连通且颜色相近"的区域（背景抠除）。
+ * - 起点为边界上所有非透明像素，向内部 4 连通蔓延；
+ * - 蔓延基准为"相邻已删除像素的颜色"（逐像素传播），渐变/近似色背景也能整片清除；
+ * - 内部与边缘不连通的相近色区域不受影响（不会误删内部）；
+ * - tolerance = 0 时仅清除与边缘连通且颜色完全相同的像素。
+ * 局限：前景主体若贴到画布边缘会被当作背景误删，建议内容留边。
+ * @param {import('./canvasModel.js').PixelCanvas} model
+ * @param {number} tolerance 容差（0 = 精确）
+ * @returns {number} 清除的像素数量
+ */
+export function removeEdgeBackground(model, tolerance) {
+  const w = model.width
+  const h = model.height
+  const data = model.data
+  const visited = new Uint8Array(data.length)
+  const stack = []
+  // 边界入栈：第 0 行 / 最后一行 / 第 0 列 / 最后一列 的非透明像素
+  for (let x = 0; x < w; x++) {
+    if (data[x] !== 0) {
+      visited[x] = 1
+      stack.push([x, 0])
+    }
+    if (h > 1) {
+      const bi = (h - 1) * w + x
+      if (data[bi] !== 0) {
+        visited[bi] = 1
+        stack.push([x, h - 1])
+      }
+    }
+  }
+  for (let y = 1; y < h - 1; y++) {
+    const li = y * w
+    if (data[li] !== 0) {
+      visited[li] = 1
+      stack.push([0, y])
+    }
+    if (w > 1) {
+      const ri = y * w + (w - 1)
+      if (data[ri] !== 0) {
+        visited[ri] = 1
+        stack.push([w - 1, y])
+      }
+    }
+  }
+  let count = 0
+  while (stack.length) {
+    const [cx, cy] = stack.pop()
+    const i = cy * w + cx
+    const c = data[i]
+    if (c === 0) continue
+    data[i] = 0
+    count++
+    for (const [nx, ny] of [
+      [cx + 1, cy],
+      [cx - 1, cy],
+      [cx, cy + 1],
+      [cx, cy - 1],
+    ]) {
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
+      const ni = ny * w + nx
+      if (visited[ni]) continue
+      visited[ni] = 1
+      if (data[ni] !== 0 && colorMatch(data[ni], c, tolerance)) stack.push([nx, ny])
     }
   }
   return count

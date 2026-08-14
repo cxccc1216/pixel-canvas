@@ -7,6 +7,7 @@ import {
   paintBrush,
   removeColorTolerance,
   removeColorRegionTolerance,
+  removeEdgeBackground,
 } from '../core/tools.js'
 
 export default function CanvasArea({
@@ -159,6 +160,14 @@ export default function CanvasArea({
       return
     }
 
+    if (tool === 'edgeClean') {
+      // 边缘去杂色：点击任意处即从画布四边向内泛洪清除背景相近色（支持撤销）
+      model.pushHistory()
+      removeEdgeBackground(model, removeTolerance)
+      onChanged()
+      return
+    }
+
     if (tool === 'fill') {
       model.pushHistory()
       floodFillScanline(model, wx, wy, color)
@@ -253,8 +262,10 @@ export default function CanvasArea({
               ? '点击填充颜色区域'
               : tool === 'picker'
                 ? '点击取色'
-                : tool === 'removeColor'
-                  ? `点击清除连通色块 · Shift+点击清除全画布 · 容差 ${removeTolerance}`
+              : tool === 'removeColor'
+                ? `点击清除连通色块 · Shift+点击清除全画布 · 容差 ${removeTolerance}`
+                : tool === 'edgeClean'
+                  ? `点击从边缘向内清除背景相近色 · 内部颜色不受影响 · 容差 ${removeTolerance}`
                   : '滚轮缩放 · 空格拖拽平移'}
         </span>
         <span>缩放 {zoom}×</span>

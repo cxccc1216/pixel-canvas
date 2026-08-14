@@ -1,8 +1,9 @@
 // 核心算法快速验证脚本（Node 运行）
-import { rgba, toRGBA, toHex, hexToRgba } from '../src/core/canvasModel.js'
+import { rgba, toRGBA, toHex, hexToRgba, PixelCanvas } from '../src/core/canvasModel.js'
 import { medianCut } from '../src/core/quantize.js'
 import { floydSteinberg, nearestColor } from '../src/core/dither.js'
 import { isInkPixel, ensureBlackInPalette, applyInkPreserve, mergeSimilarColors } from '../src/core/converter.js'
+import { removeEdgeBackground } from '../src/core/tools.js'
 
 let failed = 0
 const assert = (cond, msg) => {
@@ -132,6 +133,55 @@ const whiteGray = [
 assert(mergeSimilarColors(whiteGray).length === 2, '白与浅灰不误合并')
 // 幂等性
 assert(mergeSimilarColors(merged).length === merged.length, '合并结果再合并不变（幂等）')
+
+// ===== 10. 边缘去杂色（边界泛洪背景抠除） =====
+// 10.1 内部与背景同色也不误删：白底 + 中心红块 + 红块内白色像素
+const RED = rgba(220, 30, 30)
+const WHITE = rgba(255, 255, 255)
+const m1 = new PixelCanvas(8, 8)
+m1.clear(WHITE)
+for (let y = 2; y <= 4; y++) for (let x = 2; x <= 4; x++) m1.setPixel(x, y, RED) // 3x3 红块
+m1.setPixel(3, 3, WHITE) // 红块中心一个白点（与背景同色但不连通）
+const n1 = removeEdgeBackground(m1, 0)
+assert(n1 === 55, `边界泛洪删除 ${n1} 像素（预期 55=全部连通背景）`)
+assert(m1.getPixel(3, 3) === WHITE, '红块中心白色像素保留（内部不连通）')
+assert(m1.getPixel(2, 2) === RED && m1.getPixel(4, 4) === RED, '红块主体保留')
+
+// 10.2 渐变背景容差吸收：边界 #FFFFFF、内部近白 #FEFEFE（色差 1），容差 4 整片清除
+const m2 = new PixelCanvas(8, 8)
+m2.clear(rgba(254, 254, 254))
+for (let x = 0; x < 8; x++) {
+  m2.setPixel(x, 0, WHITE)
+  m2.setPixel(x, 7, WHITE)
+}
+for (let y = 1; y < 7; y++) {
+  m2.setPixel(0, y, WHITE)
+  m2.setPixel(7, y, WHITE)
+}
+for (let y = 2; y <= 4; y++) for (let x = 2; x <= 4; x++) m2.setPixel(x, y, RED)
+m2.setPixel(3, 3, WHITE)
+const n2 = removeEdgeBackground(m2, 4)
+assert(n2 === 55, `渐变背景容差 4 整片清除（实际 ${n2}，预期 55）`)
+assert(m2.getPixel(3, 3) === WHITE && m2.getPixel(2, 2) === RED, '渐变场景内部白点与红块保留')
+
+// 10.3 容差 0 只删边界同色圈，不吞渐变
+const m3 = new PixelCanvas(8, 8)
+m3.clear(rgba(254, 254, 254))
+for (let x = 0; x < 8; x++) {
+  m3.setPixel(x, 0, WHITE)
+  m3.setPixel(x, 7, WHITE)
+}
+for (let y = 1; y < 7; y++) {
+  m3.setPixel(0, y, WHITE)
+  m3.setPixel(7, y, WHITE)
+}
+for (let y = 2; y <= 4; y++) for (let x = 2; x <= 4; x++) m3.setPixel(x, y, RED)
+const n3 = removeEdgeBackground(m3, 0)
+assert(n3 === 28, `容差 0 仅删边界同色圈（实际 ${n3}，预期 28）`)
+
+// 10.4 全透明画布
+const m4 = new PixelCanvas(8, 8)
+assert(removeEdgeBackground(m4, 0) === 0, '全透明画布删除 0 像素')
 
 console.log(failed === 0 ? '\n✅ 全部测试通过' : `\n❌ ${failed} 项失败`)
 process.exit(failed === 0 ? 0 : 1)

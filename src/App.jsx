@@ -174,6 +174,7 @@ export default function App() {
       else if (e.key.toLowerCase() === 'g') setTool('fill')
       else if (e.key.toLowerCase() === 'i') setTool('picker')
       else if (e.key.toLowerCase() === 'r') setTool('removeColor')
+      else if (e.key.toLowerCase() === 'f') setTool('edgeClean')
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

@@ -54,6 +54,13 @@ const ICONS = {
       <path d="M8 8h8v8" />
     </svg>
   ),
+  edgeClean: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="3" />
+      <path d="M12 5v14M5 12h14" />
+      <path d="M12 8l-2-2 2-2M12 16l-2 2 2 2M16 12l-2-2 2-2M8 12l2-2-2-2" />
+    </svg>
+  ),
 }
 
 const SYMMETRY_LABEL = {
