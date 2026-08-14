@@ -8,6 +8,7 @@ import {
   removeColorTolerance,
   removeColorRegionTolerance,
   removeEdgeBackground,
+  unifyEdgeColor,
 } from '../core/tools.js'
 
 export default function CanvasArea({
@@ -161,9 +162,13 @@ export default function CanvasArea({
     }
 
     if (tool === 'edgeClean') {
-      // 边缘去杂色：点击任意处即从画布四边向内泛洪清除背景相近色（支持撤销）
+      // 边缘修复：点击 = 从边缘向内删除背景相近色；Shift+点击 = 统一边缘颜色（去白边，可重复逐圈）
       model.pushHistory()
-      removeEdgeBackground(model, removeTolerance)
+      if (e.shiftKey) {
+        unifyEdgeColor(model)
+      } else {
+        removeEdgeBackground(model, removeTolerance)
+      }
       onChanged()
       return
     }
@@ -265,7 +270,7 @@ export default function CanvasArea({
               : tool === 'removeColor'
                 ? `点击清除连通色块 · Shift+点击清除全画布 · 容差 ${removeTolerance}`
                 : tool === 'edgeClean'
-                  ? `点击从边缘向内清除背景相近色 · 内部颜色不受影响 · 容差 ${removeTolerance}`
+                  ? `点击清除边缘背景 · Shift+点击统一边缘颜色（可重复逐圈）· 容差 ${removeTolerance}`
                   : '滚轮缩放 · 空格拖拽平移'}
         </span>
         <span>缩放 {zoom}×</span>

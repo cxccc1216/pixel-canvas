@@ -164,7 +164,7 @@ export default function ColorPanel({
 
       <div className="section">
         <div className="panel-title">快捷键</div>
-        <div className="form-hint">B 铅笔 · E 橡皮 · G 油漆桶 · I 取色器 · R 去色块 · F 边缘去杂色</div>
+        <div className="form-hint">B 铅笔 · E 橡皮 · G 油漆桶 · I 取色器 · R 去色块 · F 边缘修复</div>
         <div className="form-hint">空格拖拽平移 · 滚轮缩放 · Ctrl+Z 撤销</div>
       </div>
     </div>

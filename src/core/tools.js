@@ -6,7 +6,7 @@ export const TOOLS = {
   fill: { id: 'fill', name: '油漆桶', key: 'G' },
   picker: { id: 'picker', name: '取色器', key: 'I' },
   removeColor: { id: 'removeColor', name: '去色块', key: 'R' },
-  edgeClean: { id: 'edgeClean', name: '边缘去杂色', key: 'F' },
+  edgeClean: { id: 'edgeClean', name: '边缘修复', key: 'F' },
 }
 
 export const TOOL_ORDER = ['pencil', 'eraser', 'fill', 'picker', 'removeColor', 'edgeClean']
@@ -332,4 +332,74 @@ export function removeEdgeBackground(model, tolerance) {
     }
   }
   return count
+}
+
+/**
+ * 边缘颜色统一（去白边/去色边）：把物体轮廓最外一圈的颜色改成相邻主体色。
+ * - 边缘像素 = 非透明且 4 邻域存在透明（或画布外侧）的像素；
+ * - 新颜色取 8 邻域中"内部像素"（非边缘非透明）出现最多的颜色，无内部邻居时退化为任意非透明邻居的多数色；
+ * - 只处理当前最外一圈；重复执行可逐圈向内统一（内圈若已是主体色则颜色不变）。
+ * @param {import('./canvasModel.js').PixelCanvas} model
+ * @returns {number} 改动的像素数量
+ */
+export function unifyEdgeColor(model) {
+  const w = model.width
+  const h = model.height
+  const data = model.data
+  const n = data.length
+  const isEdge = new Uint8Array(n)
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x
+      if (data[i] === 0) continue
+      for (const [nx, ny] of [
+        [x + 1, y],
+        [x - 1, y],
+        [x, y + 1],
+        [x, y - 1],
+      ]) {
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h || data[ny * w + nx] === 0) {
+          isEdge[i] = 1
+          break
+        }
+      }
+    }
+  }
+  const fixes = []
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x
+      if (!isEdge[i]) continue
+      const inner = []
+      const any = []
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue
+          const nx = x + dx
+          const ny = y + dy
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
+          const ni = ny * w + nx
+          if (data[ni] === 0) continue
+          any.push(data[ni])
+          if (!isEdge[ni]) inner.push(data[ni])
+        }
+      }
+      const src = inner.length ? inner : any
+      if (!src.length) continue
+      const counts = new Map()
+      let best = src[0]
+      let bestN = 0
+      for (const c of src) {
+        const cn = (counts.get(c) || 0) + 1
+        counts.set(c, cn)
+        if (cn > bestN) {
+          bestN = cn
+          best = c
+        }
+      }
+      if (best !== data[i]) fixes.push([i, best])
+    }
+  }
+  for (const [i, c] of fixes) data[i] = c
+  return fixes.length
 }

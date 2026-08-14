@@ -3,7 +3,7 @@ import { rgba, toRGBA, toHex, hexToRgba, PixelCanvas } from '../src/core/canvasM
 import { medianCut } from '../src/core/quantize.js'
 import { floydSteinberg, nearestColor } from '../src/core/dither.js'
 import { isInkPixel, ensureBlackInPalette, applyInkPreserve, mergeSimilarColors } from '../src/core/converter.js'
-import { removeEdgeBackground } from '../src/core/tools.js'
+import { removeEdgeBackground, unifyEdgeColor } from '../src/core/tools.js'
 
 let failed = 0
 const assert = (cond, msg) => {
@@ -182,6 +182,34 @@ assert(n3 === 28, `容差 0 仅删边界同色圈（实际 ${n3}，预期 28）`
 // 10.4 全透明画布
 const m4 = new PixelCanvas(8, 8)
 assert(removeEdgeBackground(m4, 0) === 0, '全透明画布删除 0 像素')
+
+// ===== 11. 边缘颜色统一（去白边） =====
+const GRAY = rgba(204, 204, 204)
+// 11.1 灰环贴边：透明底 + 3x3 红块外套一圈灰环 → 灰环全部改成主体红（含角点）
+const m5 = new PixelCanvas(7, 7)
+for (let y = 1; y <= 5; y++) {
+  for (let x = 1; x <= 5; x++) {
+    const inRed = x >= 2 && x <= 4 && y >= 2 && y <= 4
+    m5.setPixel(x, y, inRed ? RED : GRAY)
+  }
+}
+const n5 = unifyEdgeColor(m5)
+assert(n5 === 16, `灰环 16 像素全部统一（实际 ${n5}）`)
+assert(m5.getPixel(1, 1) === RED && m5.getPixel(1, 3) === RED && m5.getPixel(3, 1) === RED, '灰环角点与边中点改为主体红')
+assert(m5.getPixel(3, 3) === RED, '红块中心保持主体色')
+
+// 11.2 无边缘（实心满铺）→ 0 改动
+const m6 = new PixelCanvas(6, 6)
+m6.clear(RED)
+assert(unifyEdgeColor(m6) === 0, '实心满铺无透明边缘 → 0 改动')
+
+// 11.3 内部像素不受影响：5x5 红块内白点不是边缘 → 保留；边缘已是主体色则无实际改动
+const m7 = new PixelCanvas(9, 9)
+for (let y = 2; y <= 6; y++) for (let x = 2; x <= 6; x++) m7.setPixel(x, y, RED)
+m7.setPixel(4, 4, WHITE)
+const n7 = unifyEdgeColor(m7)
+assert(n7 === 0, `边缘已是主体色无实际改动（实际 ${n7}）`)
+assert(m7.getPixel(4, 4) === WHITE, '红块内部白点保留（非边缘）')
 
 console.log(failed === 0 ? '\n✅ 全部测试通过' : `\n❌ ${failed} 项失败`)
 process.exit(failed === 0 ? 0 : 1)
